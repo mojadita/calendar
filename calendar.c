@@ -3,7 +3,10 @@
  *	al encender el ordenador.
  * Autor: Luis Colorado.
  * $Log: calendar.c,v $
- * Revision 1.1  1995/10/02 19:07:28  luis
+ * Revision 1.2  1995/12/02 12:03:44  luis
+ * #undef de IMPRIMIR_FECHAS para que estas no se impriman.
+ *
+ * Revision 1.1  1995/10/02  19:07:28  luis
  * Initial revision
  *
  * Revision 4.3  1995/04/02  16:28:05  luis
@@ -38,7 +41,7 @@
 #include <string.h>
 #include <time.h>
 
-#define IMPRIMIR_FECHAS 1
+/*#define IMPRIMIR_FECHAS 1*/
 #define DEBUG(X)
 #define RETURN(X) { result = (X); goto final; }
 
