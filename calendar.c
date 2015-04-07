@@ -1,87 +1,69 @@
-/* $RCSfile: calendar.c,v $ -- programa para ejecutar programas en fechas determinadas.
- *	Incluir este programa en el fichero autoexec.bat para que se ejecute
- *	al encender el ordenador.
- * Autor: Luis Colorado.
- * $Log: calendar.c,v $
- * Revision 1.2  1995/12/02 12:03:44  luis
- * #undef de IMPRIMIR_FECHAS para que estas no se impriman.
+/* calendar.c -- programa para ejecutar programas en fechas determinadas.
+ * It uses a crontab like syntax to parse .calendar.cnf file.
+ * fields are:
  *
- * Revision 1.1  1995/10/02  19:07:28  luis
- * Initial revision
+ * monthday,             // 1..31
+ *      month,           // 0..11
+ *      year_in_century, // 0..99
+ *      weekday,         // 0..7, 0 and 7 mean sunday.
+ *      julianday,       // 1..365
+ *      easterday        // -100..200, 0 is easter sunday.
  *
- * Revision 4.3  1995/04/02  16:28:05  luis
- * *** empty log message ***
- *
- * Revision 4.2  1995/04/02  16:24:56  luis
- * Inclusion de los campos estandar de RCS
- *
- * Revision 4.1  1995/04/02  16:18:19  luis
- * Correccion de un error referente al modo de calcular
- * la forma de actualizar las fechas.  Antes se sumaba
- * 86400s a la fecha en curso.  Esto tenia el problema
- * de fallar en los cambios de hora debido a que cuando
- * se adelanta una hora el dia no llega a 86400s y por tanto,
- * el sumar 86400s a un instante de tiempo puede dar lugar a
- * dos cambios de fecha en vez de uno.  Ahora se usa como
- * variable temporal una que mantiene la hora con la fecha en
- * formato local, en la que no intervienen los cambios de hora
- * debido a que los cambios se producen en la parte de la fecha
- * de la estructura tm.
- *
- * Revision: 3.2 (94/06/08)
- * Revision: 2.3 (29.11.93).
- * Revision: 2.2 (4.10.93).
- * Revision: 2.1 (3.10.93).
- * Revision: 2.0 (2.10.93).
+ * Author: Luis Colorado <luis.colorado@ericsson.com>
+ * Date: before 2/oct/1993
  */
 
 #include <sys/types.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <getopt.h>
 #include <time.h>
 
-/*#define IMPRIMIR_FECHAS 1*/
-#define DEBUG(X)
-#define RETURN(X) { result = (X); goto final; }
+#include "easter/easter.h"
 
-int  dias_mes [2] [12] = {
+/*#define IMPRIMIR_FECHAS 1*/
+#define RETURN(X) do{ result = (X); goto final; }while(0)
+
+int dias_mes[][12] = {
 	{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
 	{31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
 };
 
-int tipo_anio (int y)
+int bisextus(int y)
 {
 	int result;
 
-	DEBUG (
-		fprintf (stderr,
-			"===>tipo_anio (%d)", y);
-	)
-	if (y % 400 == 0) RETURN (1);
-	if (y % 100 == 0) RETURN (0);
-	RETURN ((y % 4) == 0);
+#if DEBUG
+    fprintf(stderr,
+        D("===>bisextus(%d)"), y);
+#endif
+	if (y % 400 == 0) RETURN(1);
+	if (y % 100 == 0) RETURN(0);
+	RETURN((y % 4) == 0);
 final:
-	DEBUG (
-		fprintf (stderr,
-			"...%d\n", result);
-	)
+#if DEBUG
+    fprintf(stderr,
+        D("...%d\n"), result);
+#endif
 	return result;
 }
 
-int avanzar_tm (struct tm *f, int n)
+int avanzar_tm(struct tm *f, int n)
 {
 	int ta; /* TIPO DE AÑO */
 
-	DEBUG (
-		fprintf (stderr, "===>avanzar_tm ({\n");
-		fprintf (stderr, "    tm_wday->%d,\n", f->tm_wday);
-		fprintf (stderr, "    tm_yday->%d,\n", f->tm_yday);
-		fprintf (stderr, "    tm_mday->%d,\n", f->tm_mday);
-		fprintf (stderr, "    tm_mon->%d,\n", f->tm_mon+1);
-		fprintf (stderr, "    tm_year->%d}, %d)\n", f->tm_year+1900,
+#if DEBUG
+		fprintf(stderr, D("===>avanzar_tm({\n"));
+		fprintf(stderr, D("    tm_wday->%d,\n"), f->tm_wday);
+		fprintf(stderr, D("    tm_yday->%d,\n"), f->tm_yday);
+		fprintf(stderr, D("    tm_mday->%d,\n"), f->tm_mday);
+		fprintf(stderr, D("    tm_mon->%d,\n"), f->tm_mon+1);
+		fprintf(stderr, D("    tm_year->%d}, %d)\n"), f->tm_year+1900,
 			n);
-	)
+#endif
+
 	/* ACTUALIZAMOS EL DIA DE LA SEMANA */
 	f->tm_wday += n;
 	f->tm_wday %= 7;
@@ -89,7 +71,7 @@ int avanzar_tm (struct tm *f, int n)
 	/* ...EL DIA DEL MES (Y EL DIA DEL AÑO) */
 	f->tm_mday += n;
 	f->tm_yday += n;
-	ta = tipo_anio (f->tm_year + 1900);
+	ta = bisextus(f->tm_year + 1900);
 	while (f->tm_mday > dias_mes [ta][f->tm_mon])
 	{
 		f->tm_mday -= dias_mes [ta][f->tm_mon];
@@ -102,45 +84,45 @@ int avanzar_tm (struct tm *f, int n)
 			/* ...EL AÑO */
 			f->tm_yday -= 365 - ta;
 			f->tm_year++;
-			ta = tipo_anio (f->tm_year + 1900);
+			ta = bisextus(f->tm_year + 1900);
 		}
 	}
-	DEBUG (
-		fprintf (stderr, "<===avanzar_tm ({\n");
-		fprintf (stderr, "    tm_wday->%d,\n", f->tm_wday);
-		fprintf (stderr, "    tm_yday->%d,\n", f->tm_yday);
-		fprintf (stderr, "    tm_mday->%d,\n", f->tm_mday);
-		fprintf (stderr, "    tm_mon->%d,\n", f->tm_mon+1);
-		fprintf (stderr, "    tm_year->%d}, %d)\n", f->tm_year+1900,
+#if DEBUG
+		fprintf(stderr, D("<===avanzar_tm ({\n"));
+		fprintf(stderr, D("    tm_wday->%d,\n"), f->tm_wday);
+		fprintf(stderr, D("    tm_yday->%d,\n"), f->tm_yday);
+		fprintf(stderr, D("    tm_mday->%d,\n"), f->tm_mday);
+		fprintf(stderr, D("    tm_mon->%d,\n"), f->tm_mon+1);
+		fprintf(stderr, D("    tm_year->%d}, %d)\n"), f->tm_year+1900,
 			n);
-	)
+#endif
 }
 
-cmp_tm (struct tm *t1, struct tm *t2)
+int cmp_tm(struct tm *t1, struct tm *t2)
 {
 	int result;
 
-	DEBUG (
-		fprintf (stderr, "===>cmt_tm (%d/%d/%d[%d], %d/%d/%d[%d])",
+#if DEBUG
+		fprintf(stderr, D("===>cmt_tm(%d/%d/%d[%d], %d/%d/%d[%d])"),
 			t1->tm_mday, t1->tm_mon+1,
 			t1->tm_year+1900, t1->tm_wday,
 			t2->tm_mday, t2->tm_mon+1,
 			t2->tm_year+1900, t2->tm_wday);
-	)
+#endif
 
 	if (t1->tm_year != t2->tm_year)
-		RETURN (t1->tm_year - t2->tm_year);
+		RETURN(t1->tm_year - t2->tm_year);
 	if (t1->tm_yday != t2->tm_yday)
-		RETURN (t1->tm_yday - t2->tm_yday);
-	RETURN (0);
+		RETURN(t1->tm_yday - t2->tm_yday);
+	RETURN(0);
 final:
-	DEBUG (
-		fprintf (stderr, "...%d\n", result);
-	)
+#if DEBUG
+		fprintf(stderr, "...%d\n", result);
+#endif
 	return result;
 }
 
-int comprobar (char *c, int n)
+int comprobar(char *c, int n)
 /* comprueba si un determinado numero n esta en una lista indicada en c */
 {
 	char *p_term;
@@ -148,39 +130,39 @@ int comprobar (char *c, int n)
 	static char *sep = ",";
 	int result;
 
-	DEBUG(
-		fprintf (stderr,
-			"==>comprobar (\"%s\", %d)", c, n);
-	)
+#if DEBUG
+		fprintf(stderr,
+			D("==>comprobar(\"%s\", %d)"), c, n);
+#endif
 
-	if (strcmp (c, "*") == 0) RETURN (1);
+	if (strcmp(c, "*") == 0) RETURN(1);
 
-	for (	p_term = strtok (c, sep);
+	for (	p_term = strtok(c, sep);
 		p_term;
-		p_term = strtok (NULL, sep)
+		p_term = strtok(NULL, sep)
 	) {
-		switch (sscanf (p_term, "%u-%u", &x1, &x2)) {
+		switch (sscanf(p_term, "%u-%u", &x1, &x2)) {
 		case 1:
-			if (n == x1) RETURN (1);
+			if (n == x1) RETURN(1);
 			break;
 		case 2:
-			if ((x1 <= n) && (n <= x2)) RETURN (1);
+			if ((x1 <= n) && (n <= x2)) RETURN(1);
 			break;
 		default:
-			fprintf (stderr,
-				"calendar: Error de formato\n");
-			RETURN (0);
+			fprintf(stderr,
+				D("calendar: Error de formato\n"));
+			RETURN(0);
 		}
 	}
-	RETURN (0);
+	RETURN(0);
 final:
-	DEBUG (
-		fprintf (stderr, "===> %d\n", result);
-	)
+#if DEBUG
+		fprintf(stderr, "===> %d\n", result);
+#endif
 	return result;
 }
 
-void procesa_macros (char *s, struct tm *t)
+void procesa_macros(char *s, struct tm *t)
 {
 	static char auxiliar [1000];
 	char *p, *q;
@@ -193,9 +175,9 @@ void procesa_macros (char *s, struct tm *t)
 		"julio", "agosto", "septiembre", "octubre", "noviembre",
 		"diciembre",
 	};
-	DEBUG (
-		fprintf (stderr, "===>procesa_macros (\"%s\", ...)", s);
-	)
+#if DEBUG
+		fprintf(stderr, D("===>procesa_macros(\"%s\", ...)"), s);
+#endif
 	p = s;
 	q = auxiliar;
 	while (*p) {
@@ -211,36 +193,36 @@ void procesa_macros (char *s, struct tm *t)
 		case '\0':
 			*q++ = '$';
 			continue;
-		case 'a':
-			q += sprintf (q, "%02d", t->tm_year % 100);
+		case 'y':
+			q += sprintf(q, "%02d", t->tm_year % 100);
 			p++;
 			continue;
-		case 'A':
-			q += sprintf (q, "%4d", t->tm_year + 1900);
+		case 'Y':
+			q += sprintf(q, "%4d", t->tm_year + 1900);
 			p++;
 			continue;
 		case 'm':
-			q += sprintf (q, "%d", t->tm_mon + 1);
+			q += sprintf(q, "%d", t->tm_mon + 1);
 			p++;
 			continue;
 		case 'M':
-			q += sprintf (q, "%s", tab_mes [t->tm_mon]);
+			q += sprintf(q, "%s", tab_mes [t->tm_mon]);
 			p++;
 			continue;
 		case 'd':
-			q += sprintf (q, "%02d", t->tm_mday);
+			q += sprintf(q, "%02d", t->tm_mday);
 			p++;
 			continue;
 		case 'D':
-			q += sprintf (q, "%d", t->tm_mday);
+			q += sprintf(q, "%d", t->tm_mday);
 			p++;
 			continue;
-		case 's':
-			q += sprintf (q, "%d", t->tm_wday);
+		case 'w':
+			q += sprintf(q, "%d", t->tm_wday);
 			p++;
 			continue;
-		case 'S':
-			q += sprintf (q, "%s", tab_dsem [t->tm_wday]);
+		case 'W':
+			q += sprintf(q, "%s", tab_dsem [t->tm_wday]);
 			p++;
 			continue;
 		default:
@@ -250,13 +232,13 @@ void procesa_macros (char *s, struct tm *t)
 		}
 	}
 	*q = '\0';
-	strcpy (s, auxiliar);
-	DEBUG (
-		fprintf (stderr, "...s <=== \"%s\"\n", s);
-	)
+	strcpy(s, auxiliar);
+#if DEBUG
+		fprintf(stderr, "...s <=== \"%s\"\n", s);
+#endif
 }
 
-void main (int argc, char **argv)
+void main(int argc, char **argv)
 {
 	char *p_l_ano, *p_l_mes, *p_l_dmes, *p_l_dsem, *p_com;
 	time_t hora;
@@ -271,123 +253,123 @@ void main (int argc, char **argv)
 	static char *sep2 = "\n";
 	char *p;
 
-	p = getenv ("HOME");
-	sprintf (n_fich, "%s/.calendar.", p ? p : ".");
+	p = getenv("HOME");
+	sprintf(n_fich, "%s/.calendar.", p ? p : ".");
 	argc--; argv++;
 
 	/* fichero con los datos de la ultima ejecucion */
-	strcpy (strrchr (n_fich, '.'), ".dat");
+	strcpy(strrchr(n_fich, '.'), ".dat");
 	while (argc)
 	{
-		if (strcmp (argv [0], "-a") == 0)
+		if (strcmp(argv [0], "-a") == 0)
 		{
-			f = fopen (n_fich, "wt");
+			f = fopen(n_fich, "wt");
 			if (f) {
-				fprintf (f, "%ld\n", time (NULL));
-				fclose (f);
+				fprintf(f, "%ld\n", time (NULL));
+				fclose(f);
 			}
-			exit (0);
+			exit(0);
 		} else if (argv [0][0] == '+')
 		{
-			sscanf (argv [0], "%d", &lim);
+			sscanf(argv [0], "%d", &lim);
 		}
 		argc--; argv++;
 	}
 	/* ABRIMOS EL FICHERO CON LOS DATOS DE LA ULTIMA EJECUCION */
-	f = fopen (n_fich, "r");
+	f = fopen(n_fich, "r");
 	hora = 0L;
 	if (f) {
-		fscanf (f, "%ld", &hora);
-		fclose (f);
+		fscanf(f, "%ld", &hora);
+		fclose(f);
 	}
 
 	/* COPIAMOS LA FECHA DE LA ULTIMA EJECUCION EN LA ESTRUCTURA
 	 * t1. */
-	memcpy (&t1, localtime (&hora), sizeof t1);
+	memcpy(&t1, localtime(&hora), sizeof t1);
 
 	/* OBTENEMOS LA FECHA LIMITE DEL CALCULO */
-	time (&hora);
-	memcpy (&t2, localtime (&hora), sizeof t2);
-	avanzar_tm (&t2, lim);
+	time(&hora);
+	memcpy(&t2, localtime(&hora), sizeof t2);
+	avanzar_tm(&t2, lim);
 
 	/* SI t2 ES ANTERIOR A LA FECHA ACTUAL, LO AVANZAMOS
 	 * UN DIA PARA NO VOLVER A EJECUTAR LOS DATOS CORRESPONDIENTES
 	 * A ESE DIA. */ 
- 	if (cmp_tm (&t1, localtime (&hora)) < 0)
- 		avanzar_tm (&t1, 1);
+ 	if (cmp_tm(&t1, localtime(&hora)) < 0)
+ 		avanzar_tm(&t1, 1);
 
 	/* leemos el fichero de configuracion */
-	strcpy (strrchr (n_fich, '.'), ".cnf");
-	f = fopen (n_fich, "rt");
+	strcpy(strrchr(n_fich, '.'), ".cnf");
+	f = fopen(n_fich, "rt");
 	if (!f) {
-		sprintf (linea, "calendar: %s", n_fich);
-		perror (linea);
-		exit (1);
+		sprintf(linea, "calendar: %s", n_fich);
+		perror(linea);
+		exit(1);
 	}
 	n = 0;
-	while (fgets (linea, sizeof linea, f)) {
+	while (fgets(linea, sizeof linea, f)) {
 		int l;
 		char *p;
 
-		p = strtok (linea, sep2);
+		p = strtok(linea, sep2);
 		if (!p) continue;
-		while (isspace (*p)) p++;
+		while (isspace(*p)) p++;
 		if (p [0] == '#') continue;
-		l = strlen (p);
-		lin [n] = malloc (l + 1);
-		strcpy (lin [n], p);
-		DEBUG (
-			fprintf (stderr, "%s-->%s\n", n_fich, p);
-		)
+		l = strlen(p);
+		lin [n] = malloc(l + 1);
+		strcpy(lin [n], p);
+#if DEBUG
+			fprintf(stderr, D("%s-->%s\n"), n_fich, p);
+#endif
 		n++;
 	}
-	fclose (f);
+	fclose(f);
 
 
 #ifdef IMPRIMIR_FECHAS
-	fprintf (stderr,
-		"Desde Fecha:      %d/%d/%d %d:%d:%d\n",
+	fprintf(stderr,
+		D("Desde Fecha:      %d/%d/%d %d:%d:%d\n"),
 		t1.tm_mday, t1.tm_mon + 1, t1.tm_year + 1900,
 		t1.tm_hour, t1.tm_min, t1.tm_sec);
-	fprintf (stderr,
-		"Hasta Fecha:      %d/%d/%d %d:%d:%d\n",
+	fprintf(stderr,
+		D("Hasta Fecha:      %d/%d/%d %d:%d:%d\n"),
 		t2.tm_mday, t2.tm_mon + 1, t2.tm_year + 1900,
 		t2.tm_hour, t2.tm_min, t2.tm_sec);
 #endif
 
-	while (cmp_tm (&t1, &t2) <= 0) {
+	while (cmp_tm(&t1, &t2) <= 0) {
 		int i;
 		for (i = 0; i < n; i++) {
-			strcpy (linea, lin [i]);
-			p_l_dmes = strtok (linea, sep1);
+			strcpy(linea, lin [i]);
+			p_l_dmes = strtok(linea, sep1);
 			if (!p_l_dmes) continue;
-			p_l_mes = strtok (NULL, sep1);
+			p_l_mes = strtok(NULL, sep1);
 			if (!p_l_mes) continue;
-			p_l_ano = strtok (NULL, sep1);
+			p_l_ano = strtok(NULL, sep1);
 			if (!p_l_ano) continue;
-			p_l_dsem = strtok (NULL, sep1);
+			p_l_dsem = strtok(NULL, sep1);
 			if (!p_l_dsem) continue;
-			p_com = strtok (NULL, sep2);
+			p_com = strtok(NULL, sep2);
 			if (!p_com) continue;
 
-			if (	comprobar (p_l_dmes, t1.tm_mday)
-				&& comprobar (p_l_mes, t1.tm_mon + 1)
-				&& comprobar (p_l_ano, t1.tm_year)
-				&& comprobar (p_l_dsem, t1.tm_wday)
+			if (	comprobar(p_l_dmes, t1.tm_mday)
+				&& comprobar(p_l_mes, t1.tm_mon + 1)
+				&& comprobar(p_l_ano, t1.tm_year)
+				&& comprobar(p_l_dsem, t1.tm_wday)
 			) {
-				procesa_macros (p_com, &t1);
-				system (p_com);
+				procesa_macros(p_com, &t1);
+				system(p_com);
 			}
 		}
-		avanzar_tm (&t1, 1);
+		avanzar_tm(&t1, 1);
 	}
 
 	/* actualizamos la hora de la ultima ejecucion */
-	strcpy (strrchr (n_fich, '.'), ".dat");
-	f = fopen (n_fich, "w");
+	strcpy(strrchr(n_fich, '.'), ".dat");
+	f = fopen(n_fich, "w");
 	if (f) {
-		fprintf (f, "%ld\n", hora);
-		fclose (f);
+		fprintf(f, "%ld\n", hora);
+		fclose(f);
 	}
 }
 
