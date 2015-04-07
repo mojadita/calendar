@@ -19,11 +19,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
+#include <pwd.h>
 #include <time.h>
+#include <limits.h>
 
 #include "easter/easter.h"
 
-/*#define IMPRIMIR_FECHAS 1*/
+#ifndef IMPRIMIR_FECHAS
+#define IMPRIMIR_FECHAS 0
+#endif
+
 #define RETURN(X) do{ result = (X); goto final; }while(0)
 
 int dias_mes[][12] = {
@@ -35,10 +40,6 @@ int bisextus(int y)
 {
 	int result;
 
-#if DEBUG
-    fprintf(stderr,
-        D("===>bisextus(%d)"), y);
-#endif
 	if (y % 400 == 0) RETURN(1);
 	if (y % 100 == 0) RETURN(0);
 	RETURN((y % 4) == 0);
@@ -167,13 +168,13 @@ void procesa_macros(char *s, struct tm *t)
 	static char auxiliar [1000];
 	char *p, *q;
 	static char *tab_dsem [] = {
-		"domingo", "lunes", "martes", "miercoles",
-		"jueves", "viernes", "sabado"
+		"sunday", "monday", "tuesday", "wednesday",
+		"thursday", "friday", "saturday", "sunday",
 	};
 	static char *tab_mes [] = {
-		"enero", "febrero", "marzo", "abril", "mayo", "junio",
-		"julio", "agosto", "septiembre", "octubre", "noviembre",
-		"diciembre",
+		"january", "february", "march", "april", "may", "june",
+		"july", "august", "september", "october", "november",
+		"december",
 	};
 #if DEBUG
 		fprintf(stderr, D("===>procesa_macros(\"%s\", ...)"), s);
@@ -251,10 +252,27 @@ void main(int argc, char **argv)
 	FILE *f;
 	static char *sep1 = " \t\n";
 	static char *sep2 = "\n";
-	char *p;
+	char *homedir = NULL;
+    char *shell = NULL;
 
-	p = getenv("HOME");
-	sprintf(n_fich, "%s/.calendar.", p ? p : ".");
+	homedir = getenv("HOME");
+    shell = getenv("SHELL");
+
+    if (!homedir || !shell) {
+        struct passwd *u = getpwuid(getuid());
+#if DEBUG
+        printf(D("homedir(%s) or shell(%s) not found.  "
+                    "Getting info for user %s(%s) (homedir=%s, shell=%s)\n"),
+                homedir, shell, u->pw_gecos, u->pw_name, u->pw_dir, u->pw_shell);
+#endif
+        if (!homedir) homedir = u->pw_dir;
+        if (!shell) shell = u->pw_shell;
+        if (!homedir) homedir = ".";
+        if (!shell) shell = "/bin/sh";
+        endpwent();
+    } /* if */
+
+	sprintf(n_fich, "%s/.calendar.", homedir);
 	argc--; argv++;
 
 	/* fichero con los datos de la ultima ejecucion */

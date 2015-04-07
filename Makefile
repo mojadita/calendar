@@ -4,12 +4,11 @@
 
 targets=calendar
 
-
 all: $(targets)
 clean:
-	$(RM) $(targets) $(foreach i, $targets, $($(i)_objs))
+	$(RM) $(targets) $(foreach i, $(targets), $($(i)_objs))
 
-.PHONY: $(targets)
+.PHONY: all clean
 
 calendar_objs=calendar.o easter/easter.o
 calendar_libs=
@@ -17,4 +16,4 @@ calendar: $(calendar_objs)
 	$(CC) $(LDFLAGS) -o $@ $(calendar_objs) $(calendar_libs)
 
 easter/easter.o:
-	$(CC) -C easter easter.o
+	$(MAKE) -C easter easter.o
